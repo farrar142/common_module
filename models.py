@@ -76,7 +76,10 @@ class Image(BaseModel):
         return default_storage.url(file_path)
 
 
-class ImageMixin:
+class ImageMixin(models.Model):
+    class Meta:
+        abstract = True
+
     images = GenericRelation(Image)
 
 

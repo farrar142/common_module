@@ -52,7 +52,6 @@ def UserIdInjector(func):
     @functools.wraps(func)
     def wrapper(self: ContextMixin, *args):
         validated_data = args[-1]
-        print(f"{self.request.user=}")
         user_id = self.request.user.get("user_id") if self.request.user else None
         if not user_id:
             raise exceptions.PermissionDenied

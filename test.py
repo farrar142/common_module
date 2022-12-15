@@ -34,8 +34,6 @@ class Client(APIClient):
     def login(self):
         t = self.get_token("TEST_USER_EMAIL", "TEST_USER_PASSWORD")
         self.admin_token = t
-        print(f"{self.admin_token}")
-        # print(f"login {t}")
         self.credentials(HTTP_AUTHORIZATION=f"Bearer {t}")
         self.module_login(t)
 

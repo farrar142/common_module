@@ -14,8 +14,6 @@ from common_module.utils import aware_utcnow, datetime_from_epoch
 
 load_dotenv()
 
-print("loaded")
-
 
 class Token(TypedDict):
     token_type: Literal["refresh"]
@@ -39,7 +37,6 @@ def get_jwt_token_from_dict(data: dict):
 
 
 def parse_jwt(access_token: str) -> Token:
-    print(access_token)
     try:
         token = jwt.decode(access_token, options={"verify_signature": False})
         return Token(**token)

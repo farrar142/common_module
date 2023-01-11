@@ -1,11 +1,17 @@
 from typing import TypedDict, Optional, Any
 import functools
 from rest_framework import serializers, exceptions
-
+from django.db import models
 from .views import UseTokenizedRequestsMixin
 
 from .utils import MockRequest
 from .models import Image
+
+
+class MockSerializerMeta:
+    fields: set[str]
+    read_only_fields: set[str]
+    model: type[models.Model]
 
 
 class ContextType(TypedDict):
@@ -21,6 +27,7 @@ class ContextMixin:
                             상속받아야됨.
     """
 
+    Meta: MockSerializerMeta
     context: ContextType
     instance: Any
     validated_data: Optional[dict]
@@ -83,3 +90,31 @@ def ImageInjector(func):
         return instance
 
     return wrapper
+
+
+def UpdateAvailableFields(fields: list[str]):
+    def decorator(func):
+        @functools.wraps(func)
+        def inner(*args, **kwargs):
+            serializer: ContextMixin = args[0]
+            data: dict = args[-1]
+            if serializer.instance:
+                target_fields = serializer.Meta.fields
+                remove_fields = list(
+                    filter(lambda x: not fields.count(x), target_fields)
+                )
+                filtered_Fields = [(x, data.pop(x, None)) for x in remove_fields]
+                error_fields = list(filter(lambda x: x[1] != None, filtered_Fields))
+                if len(error_fields) >= 1:
+                    raise exceptions.ValidationError(
+                        detail={
+                            serializer.instance.__class__.__name__: list(
+                                map(lambda x: f"{x[0]} 필드는 업데이트 불가능합니다.", error_fields)
+                            )
+                        }
+                    )
+            return func(*args, **kwargs)
+
+        return inner
+
+    return decorator

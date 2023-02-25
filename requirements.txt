@@ -18,6 +18,7 @@ django-filter
 celery==5.2.3
 redis
 gunicorn
+uvicorn
 
 django-ninja-jwt
 python-jose[cryptography]

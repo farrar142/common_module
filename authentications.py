@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 import os
 import requests
 import jwt
@@ -15,13 +16,24 @@ from common_module.utils import aware_utcnow, datetime_from_epoch
 load_dotenv()
 
 
-class Token(TypedDict):
-    token_type: Literal["refresh"]
+@dataclass
+class Token:
     exp: str
     iat: int
     jti: str
     user_id: int
-    role: list[Literal["staff", "creator"]]
+    token_type: Literal["refresh", "access"] = "access"
+    role: list[Literal["staff", "creator"]] = field(default_factory=list)
+
+    def __getitem__(self, key: str, default=None):
+        return getattr(self, key, default)
+
+    def get(self, key: str, default=None):
+        return self.__getitem__(key, default)
+
+    @classmethod
+    def make_user_token(cls, user_id: int):
+        return Token(exp="", iat=0, jti="", user_id=user_id)
 
 
 def get_jwt_token_from_dict(data: dict):

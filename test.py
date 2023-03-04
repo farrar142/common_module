@@ -1,15 +1,25 @@
+from dataclasses import dataclass, field
+import functools
 import os
 import json
 import requests
 from dotenv import load_dotenv
-from typing import Any, Callable, Literal
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Literal,
+    Optional,
+    ParamSpec,
+    TypeVar,
+)
 
 from django.http.response import HttpResponse
-
+from rest_framework import exceptions
 from rest_framework.test import APIClient
 from rest_framework.test import APITestCase
 
-from rest_framework_simplejwt.tokens import RefreshToken
+from .authentications import Token, parse_jwt
 
 from .utils import ServerRequests
 
@@ -23,40 +33,58 @@ def request_wrapper(func: Callable[..., Any]):
     return helper
 
 
-class Client(APIClient):
-    admin_token: str
-    normal_token: str
+admin_token: Optional[str] = None
+normal_token: Optional[str] = None
 
-    def module_login(self, t: str):
-        token = f"Bearer {t}"
-        self.asset = ServerRequests(os.getenv("ASSET_SERVER", ""), token)
+
+class Client(APIClient):
+    admin_token: Optional[str] = None
+    normal_token: Optional[str] = None
+
+    def get_user_id(self, token: str | None):
+        if not token:
+            raise exceptions.ValidationError
+        return parse_jwt(token).user_id
 
     def login(self):
-        t = self.get_token("TEST_USER_EMAIL", "TEST_USER_PASSWORD")
-        self.admin_token = t
+        if not Client.admin_token:
+            t = self.get_token("ADMIN_USER", "ADMIN_PASSWORD")
+            admin_token = t
+            Client.admin_token = t
+        else:
+            t = Client.admin_token
         self.credentials(HTTP_AUTHORIZATION=f"Bearer {t}")
-        self.module_login(t)
+
+    def normal_login(self):
+        if not Client.normal_token:
+            t = self.get_token("NORMAL_USER", "NORMAL_PASSWORD")
+            self.normal_token = t
+            Client.normal_token = t
+        else:
+            t = Client.normal_token
+        # print(f"login {t}")
+        self.credentials(HTTP_AUTHORIZATION=f"Bearer {t}")
 
     def wrong_login(self):
         self.credentials(HTTP_AUTHORIZATION="Bearer dawdawdw")
-        self.module_login("dawdawdw")
 
     def logout(self):
         print("log out!")
         self.credentials()
-        self.module_login("")
 
     def get_token(
         self,
-        user_type: Literal["TEST_USER_EMAIL"],
-        pw_type: Literal["TEST_USER_PASSWORD"],
+        user_type: Literal["ADMIN_USER", "NORMAL_USER"],
+        pw_type: Literal["ADMIN_PASSWORD", "NORMAL_PASSWORD"],
     ):
         email = os.getenv(user_type)
         password = os.getenv(pw_type)
-        auth_server = os.getenv("AUTH_SERVER", "https://auth.honeycombpizza.link")
+        auth_server = os.getenv("GATEWAY_SERVER", "api.palzakspot.com")
         resp = requests.post(
-            f"{auth_server}/auth/token", json={"email": email, "password": password}
+            f"{auth_server}/auth/signin/classic",
+            data={"email": email, "password": password},
         )
+        print(resp.json())
         return resp.json().get("access")
 
     @request_wrapper
@@ -125,6 +153,84 @@ class Client(APIClient):
         )
 
 
+E = TypeVar("E")
+B = TypeVar("B", bound=bool)
+ErrorType = dict[str, exceptions.ErrorDetail]
+
+
+class ErrorContainer(Generic[E, B]):
+    detail: E
+    is_error: B
+
+    def __init__(self, data, is_error: B, status_code=200):
+        self.is_error = is_error
+        if self.is_error:
+            self.detail = data.detail
+            self.status_code = status_code
+        else:
+            self.detail = data
+            self.status_code = status_code
+
+
+token: Token = Token(
+    **{
+        "user_id": 68,
+        "exp": "",
+        "iat": 0,
+        "jti": "",
+        "token_type": "access",
+        "role": [],
+    }
+)
+
+
+class Request:
+    user = token
+    path = ""
+
+
+class View:
+    request = Request
+
+
+@dataclass
+class MockContext:
+    request: Request = field(default_factory=Request)
+    view: View = field(default_factory=View)
+
+    def __getitem__(self, key: str, default=None):
+        return getattr(self, key, default)
+
+    def get(self, key: str, default=None):
+        return self.__getitem__(key, default)
+
+
+mock_context = MockContext()
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
 class TestCase(APITestCase):
     client: Client
     client_class = Client
+    context = mock_context
+    token = token
+
+    def aware_error(
+        self, func: Callable[P, R]
+    ) -> Callable[
+        P, ErrorContainer[R, Literal[False]] | ErrorContainer[ErrorType, Literal[True]]
+    ]:
+        @functools.wraps(func)
+        def wrapper(
+            *args: P.args, **kwargs: P.kwargs
+        ) -> (
+            ErrorContainer[R, Literal[False]] | ErrorContainer[ErrorType, Literal[True]]
+        ):
+            try:
+                return ErrorContainer[R, Literal[False]](func(*args, **kwargs), False)
+            except exceptions.APIException as e:
+                return ErrorContainer[ErrorType, Literal[True]](e, True, e.status_code)
+
+        return wrapper

@@ -1,11 +1,15 @@
-from typing import TypedDict, Optional, Any
+from typing import TypeVar, TypedDict, Optional, Any
 import functools
 from rest_framework import serializers, exceptions
 from django.db import models
+
+from common_module.exceptions import ConflictException
 from .views import UseTokenizedRequestsMixin
 
 from .utils import MockRequest
-from .models import Image
+from .models import CommonModel, Image
+
+T = TypeVar("T", bound=CommonModel)
 
 
 class MockSerializerMeta:
@@ -61,7 +65,7 @@ def UserIdInjector(func):
         validated_data = args[-1]
         user_id = self.request.user.get("user_id") if self.request.user else None
         if not user_id:
-            raise exceptions.PermissionDenied
+            raise exceptions.NotAuthenticated
         validated_data["user_id"] = user_id
         print(f"{func.__name__=}fff")
         instance = func(self, *args)
@@ -112,5 +116,32 @@ def UpdateAvailableFields(fields: list[str]):
             return func(*args, **kwargs)
 
         return inner
+
+    return decorator
+
+
+def ResourceOwnerCheck(resource: str):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            serializer: BaseSerializer = args[0]
+            instance: CommonModel = args[1]
+            validated_data: dict = args[-1]
+            user = serializer.request.user
+            if not user:
+                raise exceptions.NotAuthenticated
+            # 수정 일때
+            if isinstance(instance, CommonModel):
+                target: Optional[CommonModel] = getattr(instance, resource)
+            # 데이터일때
+            else:
+                target = validated_data.get(resource, None)
+            if not target:
+                raise ConflictException(detail={resource: "수정하고자 하는 리소스에 해당 리소스가 없습니다"})
+            if target.user_id != user["user_id"]:
+                raise ConflictException(detail={resource: ["해당 모델의 소유자가 아닙니다."]})
+            instance = func(*args, **kwargs)
+            return instance
+
+        return wrapper
 
     return decorator

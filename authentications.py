@@ -78,15 +78,18 @@ class InternalJWTAuthentication(authentication.BaseAuthentication):
         try:
             claim_value = payload[claim]
         except:
-            raise exceptions.NotAuthenticated
+            return False
         claim_time = datetime_from_epoch(claim_value)
         if claim_time <= current_time:
-            raise exceptions.NotAuthenticated
+            return False
+        return True
 
     def authenticate(self, request: HttpRequest):
         jwt = get_jwt_token_from_dict(request.META)
         if not jwt:
             return (None, None)
         parsed = parse_jwt(jwt)
-        self.check_exp(parsed)
+        result = self.check_exp(parsed)
+        if not result:
+            return (None, None)
         return (parsed, None)

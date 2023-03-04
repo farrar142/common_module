@@ -46,6 +46,11 @@ class Client(APIClient):
             raise exceptions.ValidationError
         return parse_jwt(token).user_id
 
+    def fake(self):
+        self.credentials(
+            HTTP_AUTHORIZATION=f"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNjc3OTM2MjkzLCJpYXQiOjE2Nzc5MzU5OTMsImp0aSI6IjljYjk0MzM0NTMxMzQyYjJhMDBiOGZhMTk4NzM2ZWZmIiwidXNlcl9pZCI6Mywicm9sZSI6W119.lZdMAZ3FNWNXSpXpKzfRlDWwxA498_4dEIl7T0nd_K8"
+        )
+
     def login(self):
         if not Client.admin_token:
             t = self.get_token("ADMIN_USER", "ADMIN_PASSWORD")

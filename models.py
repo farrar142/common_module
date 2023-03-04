@@ -49,7 +49,6 @@ class Image(BaseModel):
         return cls.create_image(user_id, object, image)
 
     def delete(self, *args, **kwargs) -> tuple[int, dict[str, int]]:
-
         default_storage.delete(self.path)
         return super(BaseModel, self).delete(*args, **kwargs)
 
@@ -86,3 +85,5 @@ class ImageMixin(models.Model):
 class CommonModel(ImageMixin, BaseModel):
     class Meta:
         abstract = True
+
+    user_id = models.IntegerField()

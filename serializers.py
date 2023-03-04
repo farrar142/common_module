@@ -63,11 +63,8 @@ def UserIdInjector(func):
         if not user_id:
             raise exceptions.PermissionDenied
         validated_data["user_id"] = user_id
-        if func.__name__ == "create":
-            instance = func(self, validated_data)
-        else:
-            obj = args[0]
-            instance = func(self, obj, validated_data)
+        print(f"{func.__name__=}fff")
+        instance = func(self, *args)
         return instance
 
     return wrapper
@@ -98,21 +95,20 @@ def UpdateAvailableFields(fields: list[str]):
         def inner(*args, **kwargs):
             serializer: ContextMixin = args[0]
             data: dict = args[-1]
-            if serializer.instance:
-                target_fields = serializer.Meta.fields
-                remove_fields = list(
-                    filter(lambda x: not fields.count(x), target_fields)
+            if not serializer.instance:
+                return func(*args, **kwargs)
+            target_fields = serializer.Meta.fields
+            remove_fields = list(filter(lambda x: not fields.count(x), target_fields))
+            filtered_Fields = [(x, data.pop(x, None)) for x in remove_fields]
+            error_fields = list(filter(lambda x: x[1] != None, filtered_Fields))
+            if len(error_fields) >= 1:
+                raise exceptions.ValidationError(
+                    detail={
+                        serializer.instance.__class__.__name__: list(
+                            map(lambda x: f"{x[0]} 필드는 업데이트 불가능합니다.", error_fields)
+                        )
+                    }
                 )
-                filtered_Fields = [(x, data.pop(x, None)) for x in remove_fields]
-                error_fields = list(filter(lambda x: x[1] != None, filtered_Fields))
-                if len(error_fields) >= 1:
-                    raise exceptions.ValidationError(
-                        detail={
-                            serializer.instance.__class__.__name__: list(
-                                map(lambda x: f"{x[0]} 필드는 업데이트 불가능합니다.", error_fields)
-                            )
-                        }
-                    )
             return func(*args, **kwargs)
 
         return inner

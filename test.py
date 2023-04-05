@@ -89,6 +89,7 @@ class Client(APIClient):
             f"{auth_server}/auth/signin/classic",
             data={"email": email, "password": password},
         )
+        print(resp.content)
         print(resp.json())
         return resp.json().get("access")
 
@@ -177,16 +178,7 @@ class ErrorContainer(Generic[E, B]):
             self.status_code = status_code
 
 
-token: Token = Token(
-    **{
-        "user_id": 68,
-        "exp": "",
-        "iat": 0,
-        "jti": "",
-        "token_type": "access",
-        "role": [],
-    }
-)
+token: Token = Token.make_user_token(68)
 
 
 class Request:

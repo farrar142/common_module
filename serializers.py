@@ -63,12 +63,14 @@ def UserIdInjector(func):
     @functools.wraps(func)
     def wrapper(self: ContextMixin, *args):
         validated_data = args[-1]
-        user_id = self.request.user.get("user_id") if self.request.user else None
+        user_id = self.request.auth.get("user_id") if self.request.auth else None
         if not user_id:
             raise exceptions.NotAuthenticated
-        validated_data["user_id"] = user_id
-        print(f"{func.__name__=}fff")
+        validated_data["user"] = self.request.user
+        print("in serializer")
+        print(self.request.user, self.request.auth)
         instance = func(self, *args)
+        print(f"{instance=}")
         return instance
 
     return wrapper
@@ -79,7 +81,7 @@ def ImageInjector(func):
     def wrapper(self, *args):
         validated_data = args[-1]
         image = validated_data.pop("image", None)
-        user_id = self.context["request"].user.get("user_id")
+        user_id = self.context["request"].auth.get("user_id")
         if func.__name__ == "create":
             instance = func(self, validated_data)
         else:
@@ -126,8 +128,9 @@ def ResourceOwnerCheck(resource: str):
             serializer: BaseSerializer = args[0]
             instance: CommonModel = args[1]
             validated_data: dict = args[-1]
-            user = serializer.request.user
+            user = serializer.request.auth
             if not user:
+                print("not login")
                 raise exceptions.NotAuthenticated
             # 수정 일때
             if isinstance(instance, CommonModel):
@@ -137,7 +140,7 @@ def ResourceOwnerCheck(resource: str):
                 target = validated_data.get(resource, None)
             if not target:
                 raise ConflictException(detail={resource: "수정하고자 하는 리소스에 해당 리소스가 없습니다"})
-            if target.user_id != user["user_id"]:
+            if target.user.pk != user["user_id"]:
                 raise ConflictException(detail={resource: ["해당 모델의 소유자가 아닙니다."]})
             instance = func(*args, **kwargs)
             return instance

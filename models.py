@@ -85,5 +85,3 @@ class ImageMixin(models.Model):
 class CommonModel(ImageMixin, BaseModel):
     class Meta:
         abstract = True
-
-    user_id = models.IntegerField()

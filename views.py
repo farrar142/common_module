@@ -32,6 +32,8 @@ class BaseMixinWrapper(viewsets.ModelViewSet, Generic[T]):
     queryset: QuerySet[T]
     kwargs: dict
     filterset_fields: Iterable[str]
+    read_only_serializer: type[serializers.Serializer]
+    upsert_serializer: type[serializers.Serializer]
 
     def get_object(self) -> T:
         if self.cached_instance:
@@ -45,8 +47,13 @@ class BaseMixinWrapper(viewsets.ModelViewSet, Generic[T]):
     def filter_queryset(self, queryset) -> QuerySet[T]:
         return super().filter_queryset(queryset)
 
-    def get_serializer_class(self) -> serializers.Serializer:
-        return super().get_serializer_class()
+    def get_serializer_class(self):
+        serializer_classes = {
+            "GET": self.read_only_serializer,
+            "__default__": self.upsert_serializer,
+        }
+        method = self.request.method or "GET"
+        return serializer_classes.get(method, self.upsert_serializer)
 
     def get_serializer(self, *args, **kwargs) -> serializers.Serializer:
         return super().get_serializer(*args, **kwargs)
@@ -106,9 +113,9 @@ class DisallowEditOtherUsersResourceMixin(BaseMixin[T]):
         """
         리소스 소유자의 ID를 확인하여 업데이트 가능 여부를 반환합니다.
         """
-        if not self.request.user:
+        if not self.request.auth:
             return False
-        if not self.request.user["user_id"] == instance.user_id:
+        if not self.request.auth["user_id"] == instance.user_id:
             return False
         return True
 

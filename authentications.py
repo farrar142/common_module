@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 import os
 import requests
 import jwt
+from uuid import uuid4
 from dotenv import load_dotenv
 from typing import Optional, Literal, TypedDict, Mapping
 from django.http import HttpRequest
@@ -22,6 +23,9 @@ class Token:
     iat: int
     jti: str
     user_id: int
+    username: str
+    nickname: str
+    profile_image_url: str
     token_type: Literal["refresh", "access"] = "access"
     role: list[Literal["staff", "creator"]] = field(default_factory=list)
 
@@ -33,7 +37,74 @@ class Token:
 
     @classmethod
     def make_user_token(cls, user_id: int):
-        return Token(exp="", iat=0, jti="", user_id=user_id)
+        return Token(
+            exp="",
+            iat=0,
+            jti="",
+            user_id=user_id,
+            nickname="",
+            username="",
+            profile_image_url="",
+            token_type="access",
+            role=[],
+        )
+
+
+USER_CACHE_KEY = lambda x: f"GATEWAY:user:{x}:cached"
+
+
+def has_user_cached(token: Token):
+    from .caches import cache
+
+    cached = cache.get(USER_CACHE_KEY(token.user_id))
+    if cached:
+        print("hit cached!@!#@$%#")
+        return cached
+    return False
+
+
+def set_user_cache(user):
+    from .caches import cache
+
+    cache.set(USER_CACHE_KEY(user.pk), user)
+
+
+def check_user_changed(user, token: Token):
+    if user.nickname != token.nickname or user.username != token.username:
+        user.nickname = token.nickname
+        user.username = token.username
+        user.save()
+        user.refresh_from_db()
+
+
+def create_user(user_class, token: Token):
+    is_staff = "staff" in token.role
+    user = user_class(
+        nickname=token.nickname,
+        username=token.username,
+        id=token.user_id,
+        is_staff=is_staff,
+    )
+    user.set_password(str(uuid4()))
+    user.save()
+    user.refresh_from_db()
+    return user
+
+
+def get_or_create_user(token: Token):
+    from django.contrib.auth import get_user_model
+
+    cached = has_user_cached(token)
+    if cached:
+        return cached
+    User = get_user_model()
+    user = User.objects.filter(id=token.user_id).first()
+    if user:
+        check_user_changed(user, token)
+    else:
+        user = create_user(User, token)
+    set_user_cache(user)
+    return user
 
 
 def get_jwt_token_from_dict(data: dict):
@@ -92,4 +163,6 @@ class InternalJWTAuthentication(authentication.BaseAuthentication):
         result = self.check_exp(parsed)
         if not result:
             return (None, None)
-        return (parsed, None)
+        user = get_or_create_user(parsed)
+        print(user, parsed)
+        return (user, parsed)
